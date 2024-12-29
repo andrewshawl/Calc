@@ -86,26 +86,26 @@ def main():
 
     # Botón para ejecutar el cálculo
     if st.button("Calcular Distribución en Tramos"):
-        # Definir los tramos con lotes_deseados multiplicados por 1.25
+        # Definir los tramos dinámicamente basado en el precio inicial
         tramos = [
             {
                 "nombre": "Tramo 1",
-                "inicio": 2700,
-                "fin": 2600,
+                "inicio": precio_inicial,
+                "fin": precio_inicial - 100,
                 "lotes_deseados": 2 * 1.25,  # 2.5 lotes
                 "break_even_objetivo": precio_inicial - 70
             },
             {
                 "nombre": "Tramo 2",
-                "inicio": 2600,
-                "fin": 2500,
+                "inicio": precio_inicial - 100,
+                "fin": precio_inicial - 200,
                 "lotes_deseados": 4 * 1.25,  # 5 lotes
                 "break_even_objetivo": precio_inicial - 140
             },
             {
                 "nombre": "Tramo 3",
-                "inicio": 2500,
-                "fin": 2400,
+                "inicio": precio_inicial - 200,
+                "fin": precio_inicial - 300,
                 "lotes_deseados": 6 * 1.25,  # 7.5 lotes
                 "break_even_objetivo": precio_inicial - 210
             }
@@ -130,6 +130,15 @@ def main():
             # Escalar para cumplir con los lotes deseados en el tramo
             df_escalado = escalar_hasta_lotes(df_base, tramo["lotes_deseados"])
             
+            # Aplicar factores de multiplicación en Tramo 2 si corresponde
+            if tramo["nombre"] == "Tramo 2":
+                # Multiplicar lotes antes de 2560 por 0.93
+                df_escalado.loc[df_escalado['Precio'] > 2560, 'Lotes'] *= 0.93
+                # Multiplicar lotes después de 2560 por 1.03
+                df_escalado.loc[df_escalado['Precio'] <= 2560, 'Lotes'] *= 1.03
+                # Recalcular el costo parcial después de ajustar los lotes
+                df_escalado['Costo parcial'] = df_escalado['Precio'] * df_escalado['Lotes'] * LOTES_A_UNIDADES
+
             # Añadir columna de tramo
             df_escalado['Tramo'] = tramo["nombre"]
             

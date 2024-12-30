@@ -24,7 +24,7 @@ def repartir_compras_por_promedio(precios, precio_objetivo):
       - 1 lote si el precio está por encima del objetivo.
       - 5 lotes si el precio está por debajo del objetivo.
       - 0 lotes si el precio es igual al objetivo.
-    
+
     Retorna un DataFrame con las asignaciones base.
     """
     data = []
@@ -98,16 +98,14 @@ def main():
             {
                 "nombre": "Tramo 2",
                 "inicio": precio_inicial - 100,
-                "fin": precio_inicial - 200,
-                "lotes_deseados": 4 * 1.25,  # 5 lotes
-                "break_even_objetivo": precio_inicial - 140
+                "fin": precio_inicial - 200
+                # No necesitamos 'lotes_deseados' ni 'break_even_objetivo' para Tramo 2
             },
             {
                 "nombre": "Tramo 3",
                 "inicio": precio_inicial - 200,
-                "fin": precio_inicial - 300,
-                "lotes_deseados": 6 * 1.25,  # 7.5 lotes
-                "break_even_objetivo": precio_inicial - 210
+                "fin": precio_inicial - 300
+                # No necesitamos 'lotes_deseados' ni 'break_even_objetivo' para Tramo 3
             }
         ]
 
@@ -124,41 +122,114 @@ def main():
             # Generar precios para el tramo
             precios_tramo = generar_precios_decrecientes(tramo["inicio"], tramo["fin"], paso=5)
             
-            # Repartir compras por promedio objetivo
-            df_base = repartir_compras_por_promedio(precios_tramo, tramo["break_even_objetivo"])
+            if tramo["nombre"] == "Tramo 1":
+                # Repartir compras por promedio objetivo
+                df_base = repartir_compras_por_promedio(precios_tramo, tramo["break_even_objetivo"])
+                
+                # Escalar para cumplir con los lotes deseados en el tramo
+                df_escalado = escalar_hasta_lotes(df_base, tramo["lotes_deseados"])
+                
+                # Añadir columna de tramo
+                df_escalado['Tramo'] = tramo["nombre"]
+                
+                # Calcular lotes y costo acumulado paso a paso
+                df_escalado['Lotes Acumulados'] = df_escalado['Lotes'].cumsum() + lotes_acumulados
+                df_escalado['Costo Acumulado'] = df_escalado['Costo parcial'].cumsum() + costo_acumulado
+                
+                # Calcular break even (promedio ponderado) paso a paso
+                df_escalado['Break Even'] = df_escalado['Costo Acumulado'] / (df_escalado['Lotes Acumulados'] * LOTES_A_UNIDADES)
+                
+                # Calcular flotante paso a paso usando el precio actual en cada fila
+                df_escalado['Flotante'] = (df_escalado['Precio'] - df_escalado['Break Even']) * (df_escalado['Lotes Acumulados'] * LOTES_A_UNIDADES)
+                
+                # Guardar los lotajes del Tramo 1 para usarlos en Tramo 3
+                lotajes_tramo1 = df_escalado[['Precio', 'Lotes']].set_index('Precio')['Lotes'].to_dict()
+                
+                # Actualizar acumulados para el siguiente tramo
+                costo_acumulado = df_escalado['Costo Acumulado'].iloc[-1]
+                lotes_acumulados = df_escalado['Lotes Acumulados'].iloc[-1]
+                
+                # Agregar al acumulado de transacciones
+                transacciones_acumuladas.append(df_escalado)
             
-            # Escalar para cumplir con los lotes deseados en el tramo
-            df_escalado = escalar_hasta_lotes(df_base, tramo["lotes_deseados"])
-            
-            # Aplicar factores de multiplicación en Tramo 2 si corresponde
-            if tramo["nombre"] == "Tramo 2":
-                # Multiplicar lotes antes de 2560 por 0.93
-                df_escalado.loc[df_escalado['Precio'] > 2560, 'Lotes'] *= 0.93
-                # Multiplicar lotes después de 2560 por 1.03
-                df_escalado.loc[df_escalado['Precio'] <= 2560, 'Lotes'] *= 1.03
-                # Recalcular el costo parcial después de ajustar los lotes
+            elif tramo["nombre"] == "Tramo 2":
+                # Crear DataFrame personalizado para Tramo 2 según tus especificaciones
+                data = []
+                for p_tramo in precios_tramo:
+                    if p_tramo > (precio_inicial - 175):
+                        # Hasta llegar a p - 175, usa el lotaje base de 0.0568 * 1.3542
+                        lotes_base = 0.0568 * 1.3542
+                    elif p_tramo == (precio_inicial - 175):
+                        # En p - 175, usa 0 lotes
+                        lotes_base = 0
+                    else:  # Desde p - 175 hasta p - 200, usa 0.568 lotes * 1.3542
+                        lotes_base = 0.568 * 1.3542
+                    data.append({"Precio": p_tramo, "Lotes": lotes_base})
+                df_escalado = pd.DataFrame(data)
+                
+                # Calcular costo parcial
                 df_escalado['Costo parcial'] = df_escalado['Precio'] * df_escalado['Lotes'] * LOTES_A_UNIDADES
-
-            # Añadir columna de tramo
-            df_escalado['Tramo'] = tramo["nombre"]
+                
+                # Añadir columna de tramo
+                df_escalado['Tramo'] = tramo["nombre"]
+                
+                # Calcular lotes y costo acumulado paso a paso
+                df_escalado['Lotes Acumulados'] = df_escalado['Lotes'].cumsum() + lotes_acumulados
+                df_escalado['Costo Acumulado'] = df_escalado['Costo parcial'].cumsum() + costo_acumulado
+                
+                # Calcular break even (promedio ponderado) paso a paso
+                df_escalado['Break Even'] = df_escalado['Costo Acumulado'] / (df_escalado['Lotes Acumulados'] * LOTES_A_UNIDADES)
+                
+                # Calcular flotante paso a paso usando el precio actual en cada fila
+                df_escalado['Flotante'] = (df_escalado['Precio'] - df_escalado['Break Even']) * (df_escalado['Lotes Acumulados'] * LOTES_A_UNIDADES)
+                
+                # Actualizar acumulados para el siguiente tramo
+                costo_acumulado = df_escalado['Costo Acumulado'].iloc[-1]
+                lotes_acumulados = df_escalado['Lotes Acumulados'].iloc[-1]
+                
+                # Agregar al acumulado de transacciones
+                transacciones_acumuladas.append(df_escalado)
             
-            # Calcular lotes y costo acumulado paso a paso
-            df_escalado['Lotes Acumulados'] = df_escalado['Lotes'].cumsum() + lotes_acumulados
-            df_escalado['Costo Acumulado'] = df_escalado['Costo parcial'].cumsum() + costo_acumulado
-            
-            # Calcular break even (promedio ponderado) paso a paso
-            df_escalado['Break Even'] = df_escalado['Costo Acumulado'] / (df_escalado['Lotes Acumulados'] * LOTES_A_UNIDADES)
-            
-            # Calcular flotante paso a paso usando el precio actual en cada fila
-            df_escalado['Flotante'] = (df_escalado['Precio'] - df_escalado['Break Even']) * (df_escalado['Lotes Acumulados'] * LOTES_A_UNIDADES)
-            
-            # Actualizar acumulados para el siguiente tramo
-            costo_acumulado = df_escalado['Costo Acumulado'].iloc[-1]
-            lotes_acumulados = df_escalado['Lotes Acumulados'].iloc[-1]
-            
-            # Agregar al acumulado de transacciones
-            transacciones_acumuladas.append(df_escalado)
-
+            elif tramo["nombre"] == "Tramo 3":
+                # Crear DataFrame personalizado para Tramo 3 según tus especificaciones
+                data = []
+                for p_tramo in precios_tramo:
+                    if (precio_inicial - 280) < p_tramo <= (precio_inicial - 200):
+                        # Asignar 0.0568 lotes para precios entre p-200 y p-280
+                        lotes_base = 0.0568
+                    elif p_tramo == (precio_inicial - 280):
+                        # En p - 280, usa 0 lotes
+                        lotes_base = 0
+                    else:  # Desde p - 200 hasta p - 300, usa 0.852 lotes
+                        lotes_base = 0.852
+                    # Multiplicar el lotaje por 1.7373
+                    lotes_base *= 1.7373
+                    data.append({"Precio": p_tramo, "Lotes": lotes_base})
+                df_escalado = pd.DataFrame(data)
+                
+                # Calcular costo parcial
+                df_escalado['Costo parcial'] = df_escalado['Precio'] * df_escalado['Lotes'] * LOTES_A_UNIDADES
+                
+                # Añadir columna de tramo
+                df_escalado['Tramo'] = tramo["nombre"]
+                
+                # Calcular lotes y costo acumulado paso a paso
+                df_escalado['Lotes Acumulados'] = df_escalado['Lotes'].cumsum() + lotes_acumulados
+                df_escalado['Costo Acumulado'] = df_escalado['Costo parcial'].cumsum() + costo_acumulado
+                
+                # Calcular break even (promedio ponderado) paso a paso
+                df_escalado['Break Even'] = df_escalado['Costo Acumulado'] / (df_escalado['Lotes Acumulados'] * LOTES_A_UNIDADES)
+                
+                # Calcular flotante paso a paso usando el precio actual en cada fila
+                df_escalado['Flotante'] = (df_escalado['Precio'] - df_escalado['Break Even']) * (df_escalado['Lotes Acumulados'] * LOTES_A_UNIDADES)
+                
+                # Actualizar acumulados para el siguiente tramo
+                costo_acumulado = df_escalado['Costo Acumulado'].iloc[-1]
+                lotes_acumulados = df_escalado['Lotes Acumulados'].iloc[-1]
+                
+                # Agregar al acumulado de transacciones
+                transacciones_acumuladas.append(df_escalado)
+        
         # Concatenar todos los tramos
         df_final = pd.concat(transacciones_acumuladas, ignore_index=True)
 
@@ -174,8 +245,8 @@ def main():
 
         # Redondear valores para mejor visualización
         df_final['Precio'] = df_final['Precio'].round(2)
-        df_final['Lotes'] = df_final['Lotes'].round(4)
-        df_final['Lotes Acumulados'] = df_final['Lotes Acumulados'].round(4)
+        df_final['Lotes'] = df_final['Lotes'].round(6)
+        df_final['Lotes Acumulados'] = df_final['Lotes Acumulados'].round(6)
         df_final['Break Even'] = df_final['Break Even'].round(4)
         df_final['Flotante'] = df_final['Flotante'].round(2)
 
@@ -188,7 +259,7 @@ def main():
         st.write(f"### Flotante Total: {df_final['Flotante'].iloc[-1]:.2f}")
 
         # Validar que se hayan acumulado los lotes correctos
-        st.write(f"### Total de Lotes Acumulados: {df_final['Lotes Acumulados'].iloc[-1]:.4f}")
+        st.write(f"### Total de Lotes Acumulados: {df_final['Lotes Acumulados'].iloc[-1]:.6f}")
 
 # Ejecutar la aplicación
 if __name__ == "__main__":
